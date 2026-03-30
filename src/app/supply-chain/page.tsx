@@ -1,12 +1,88 @@
+"use client";
+
+import { useState } from "react";
 import { entities, supplyChainLinks, complianceThresholds } from "@/data/mock";
 import { MsIcon } from "@/components/ms-icon";
 import { SupplyChainGraph } from "@/components/supply-chain-graph";
+import { useTradeData, type TradeResponse } from "@/hooks/use-api";
 
 function getEntity(id: string) {
   return entities.find((e) => e.id === id);
 }
 
+const MINERALS = ["lithium", "rare-earth", "cobalt", "nickel", "graphite"] as const;
+
+function TradeDataPanel({ mineral }: { mineral: string }) {
+  const { data, loading, error } = useTradeData(mineral, "842", "2024");
+
+  return (
+    <div className="bg-[var(--color-surface-container)] rounded-xl p-5 border border-[var(--color-outline-variant)]/10">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-secondary)]">
+          U.S. Imports — <span className="capitalize">{mineral.replace("-", " ")}</span>
+        </h3>
+        <span className="text-[9px] text-[var(--color-outline)] bg-[var(--color-surface-container-highest)] px-2 py-0.5 rounded">
+          UN Comtrade API
+        </span>
+      </div>
+
+      {loading && (
+        <div className="text-[12px] text-[var(--color-primary)] animate-pulse py-4 text-center">
+          Querying UN Comtrade for HS codes...
+        </div>
+      )}
+
+      {error && (
+        <div className="text-[12px] text-[var(--color-error)] py-2">Trade data unavailable: {error}</div>
+      )}
+
+      {data && !loading && (
+        <>
+          {!data.configured ? (
+            <div className="p-3 bg-[var(--color-tertiary)]/5 rounded-lg">
+              <p className="text-[11px] text-[var(--color-tertiary)] font-medium">{data.note}</p>
+              <p className="text-[10px] text-[var(--color-muted-foreground)] mt-1">
+                HS codes for {mineral}: {data.hsCodes?.join(", ")}
+              </p>
+            </div>
+          ) : data.results.length === 0 ? (
+            <p className="text-[12px] text-[var(--color-outline)] py-4 text-center">
+              No trade records found for this query.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-[11px] font-bold text-foreground">{data.total} records</span>
+                <span className="text-[10px] text-[var(--color-outline)]">Period: {data.period} · {data.flow}</span>
+              </div>
+              {data.results.slice(0, 15).map((r, i) => (
+                <div key={i} className="flex items-center justify-between p-2.5 bg-[var(--color-surface-container-low)] rounded-lg text-[11px]">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-foreground truncate">{r.partner}</div>
+                    <div className="text-[10px] text-[var(--color-outline)] truncate">{r.commodity}</div>
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <div className="font-bold text-[var(--color-secondary)] tabular-nums">
+                      ${(r.value / 1_000_000).toFixed(1)}M
+                    </div>
+                    {r.netWeight && (
+                      <div className="text-[9px] text-[var(--color-outline)] tabular-nums">
+                        {(r.netWeight / 1000).toFixed(0)} MT
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SupplyChainPage() {
+  const [selectedMineral, setSelectedMineral] = useState("lithium");
   const flaggedLinks = supplyChainLinks.filter((l) => l.riskFlags.length > 0);
   const minerals = [...new Set(supplyChainLinks.map((l) => l.mineral))];
 
@@ -19,12 +95,20 @@ export default function SupplyChainPage() {
             Supply Chain Flow Analysis
           </h1>
           <p className="text-[var(--color-muted-foreground)] text-sm mt-1">
-            Cross-border mineral dependency mapping and supply route intelligence.
+            Cross-border mineral flows via UN Comtrade. Route intelligence and dependency mapping.
           </p>
         </div>
         <div className="flex items-center gap-2 bg-[var(--color-surface-container-low)] p-1 rounded-lg">
-          {minerals.map((m, i) => (
-            <button key={m} className={`px-4 py-1.5 text-xs font-bold rounded capitalize ${i === 0 ? "bg-[var(--color-surface-container-highest)] text-[var(--color-primary)] shadow-sm" : "text-[var(--color-muted-foreground)] hover:text-foreground"} transition-colors`}>
+          {MINERALS.map((m) => (
+            <button
+              key={m}
+              onClick={() => setSelectedMineral(m)}
+              className={`px-4 py-1.5 text-xs font-bold rounded capitalize ${
+                selectedMineral === m
+                  ? "bg-[var(--color-surface-container-highest)] text-[var(--color-primary)] shadow-sm"
+                  : "text-[var(--color-muted-foreground)] hover:text-foreground"
+              } transition-colors`}
+            >
               {m.replace("-", " ")}
             </button>
           ))}
@@ -71,6 +155,9 @@ export default function SupplyChainPage() {
           </div>
         </div>
       </div>
+
+      {/* UN Comtrade Trade Data */}
+      <TradeDataPanel mineral={selectedMineral} />
 
       {/* Flow Visualization */}
       <SupplyChainGraph />
