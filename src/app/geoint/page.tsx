@@ -4,8 +4,10 @@ import { useState } from "react";
 import { entities, alerts, type Entity } from "@/data/mock";
 import { MsIcon } from "@/components/ms-icon";
 import { SatelliteModal } from "@/components/satellite-modal";
+import { SatelliteImageryView } from "@/components/satellite-imagery";
 
-function SatelliteImageryThumb({ entity }: { entity: Entity }) {
+// Legacy stub — kept for type reference only
+function _SatelliteImageryThumb_UNUSED({ entity }: { entity: Entity }) {
   const isFlagged = entity.verificationStatus === "flagged";
   const isMonitoring = entity.verificationStatus === "monitoring";
   const seed = entity.id.charCodeAt(1);
@@ -146,7 +148,7 @@ function SatelliteCard({ entity, onClick }: { entity: Entity; onClick: () => voi
     >
       {/* Imagery */}
       <div className="relative bg-[#0b0e14] overflow-hidden" style={{ height: 160 }}>
-        <SatelliteImageryThumb entity={entity} />
+        <SatelliteImageryView entity={entity} size={160} />
 
         {/* Hover overlay */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">

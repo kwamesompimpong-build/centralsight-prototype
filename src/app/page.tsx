@@ -42,7 +42,7 @@ export default function DashboardPage() {
   }
 
   function handleGenerateReport() {
-    router.push("/compliance");
+    router.push("/report");
   }
 
   function handleShareBriefing() {

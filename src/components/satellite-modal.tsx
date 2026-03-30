@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import { MsIcon } from "@/components/ms-icon";
 import type { Entity } from "@/data/mock";
+import { SatelliteImageryView } from "@/components/satellite-imagery";
 
+// Legacy stub — replaced by SatelliteImageryView
 function SatelliteImagery({ entity, large }: { entity: Entity; large?: boolean }) {
   const size = large ? 480 : 160;
   const isFlagged = entity.verificationStatus === "flagged";
@@ -276,7 +278,7 @@ export function SatelliteModal({ entity, onClose }: Props) {
             {/* Imagery panel */}
             <div className="bg-[#0b0e14] relative flex items-center justify-center" style={{ minHeight: 320 }}>
               <div className="w-full h-full" style={{ aspectRatio: "1 / 1", maxHeight: 400 }}>
-                <SatelliteImagery entity={entity} large />
+                <SatelliteImageryView entity={entity} size={480} />
               </div>
 
               {/* Overlay HUD */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MsIcon } from "@/components/ms-icon";
 
 type SourceStatus = "active" | "limited" | "pending" | "gap";
@@ -439,9 +439,175 @@ const HTS_CODES = [
   { mineral: "Tungsten", codes: ["2611.00 (ores)", "8101.10 (powders)"] },
 ];
 
+// ─── Python code snippets per source ────────────────────────────────────────
+const CODE_SNIPPETS: Record<string, string> = {
+  comtrade: `import comtradeapicall as ct
+
+# Critical minerals: lithium carbonate (HS 283691), cobalt ores (260500)
+df = ct.getFinalData(
+    subscription_key="YOUR_KEY",
+    typeCode="C",          # commodities
+    freqCode="A",          # annual
+    clCode="HS",
+    period="2024",
+    reporterCode="842",    # USA
+    cmdCode="283691",      # lithium carbonate
+    flowCode="M",          # imports
+    partnerCode="156",     # China
+)`,
+  usitc: `import requests
+
+r = requests.get(
+    "https://datawebws.usitc.gov/dataweb/api/tradeData",
+    headers={"Authorization": "Bearer YOUR_TOKEN"},
+    params={
+        "reportType": "IMP", "period": "202401-202412",
+        "hts": "2836910000",  # lithium carbonate 10-digit
+        "country": "CN",
+    }
+)
+data = r.json()`,
+  gfw: `from gfw_client import GFWClient
+
+client = GFWClient(api_key="YOUR_KEY")
+# Bulk carriers at known Chinese mineral export ports
+vessels = client.get_vessel_search(
+    where="vessel_type:CARGO",
+    includes=["VESSEL_INFO","FISHING_AUTHORIZATION"]
+)
+# Port visits: Qinhuangdao, Tianjin, Shanghai
+visits = client.get_events(
+    event_type="port",
+    vessels=[v.id for v in vessels],
+    start_date="2026-01-01", end_date="2026-03-28",
+)`,
+  aisstream: `import asyncio, json
+import websockets
+
+async def track_vessels(mmsi_list):
+    async with websockets.connect("wss://stream.aisstream.io/v0/stream") as ws:
+        await ws.send(json.dumps({
+            "APIKey": "YOUR_KEY",
+            "BoundingBoxes": [[[20, 100], [45, 130]]],  # East China Sea
+            "FilterMessageTypes": ["PositionReport"]
+        }))
+        async for msg in ws:
+            data = json.loads(msg)
+            if data["MetaData"]["MMSI"] in mmsi_list:
+                print(data["MetaData"]["ShipName"], data["Message"])`,
+  edgar: `import edgartools as et
+
+# Search all 10-K filings mentioning "critical minerals"
+results = et.search_filings(
+    query='"critical minerals" "supply chain"',
+    form_type="10-K",
+    date_range=("2025-01-01", "2026-03-28"),
+)
+for filing in results:
+    # Get structured XBRL data
+    facts = et.get_company_facts(filing.cik)
+    print(filing.company, filing.filed_date)`,
+  opensanctions: `import requests
+
+# Screen entity against 325+ sanctions lists
+r = requests.get(
+    "https://api.opensanctions.org/match/default",
+    params={"q": "Ganfeng Lithium", "limit": 5},
+    headers={"Authorization": "ApiKey YOUR_KEY"}
+)
+for match in r.json()["results"]:
+    print(match["caption"], match["datasets"], match["score"])`,
+  csl: `import requests
+
+# No API key required — Consolidated Screening List
+r = requests.get(
+    "https://api.trade.gov/consolidated_screening_list/search",
+    params={"q": "CATL", "sources": "SDN,UFLPA,ISN"}
+)
+for hit in r.json()["results"]:
+    print(hit["name"], hit["source"], hit["addresses"])`,
+  sentinel2: `import pystac_client, stackstac
+
+catalog = pystac_client.Client.open(
+    "https://earth-search.aws.element84.com/v1"
+)
+items = catalog.search(
+    collections=["sentinel-2-l2a"],
+    bbox=[115.8, 28.6, 115.95, 28.75],  # Ganfeng Lithium, Jiangxi
+    datetime="2026-01-01/2026-03-28",
+    query={"eo:cloud_cover": {"lt": 20}}
+).item_collection()
+
+stack = stackstac.stack(items, assets=["B08","B04","B12"])
+# NDVI change detection: negative = vegetation loss = expansion
+ndvi = (stack.sel(band="B08") - stack.sel(band="B04")) / \
+       (stack.sel(band="B08") + stack.sel(band="B04"))`,
+  firms: `import requests, pandas as pd
+
+# VIIRS thermal anomalies near Baotou REE processing
+r = requests.get(
+    "https://firms.modaps.eosdis.nasa.gov/api/area/csv/YOUR_MAP_KEY/VIIRS_SNPP_NRT",
+    params={
+        "latitude": 40.66, "longitude": 109.84,
+        "radius": 50,      # km
+        "date": "2026-03-25", "dayrange": 7
+    }
+)
+df = pd.read_csv(pd.io.common.StringIO(r.text))
+# bright_ti4 > 340K indicates industrial heat source
+industrial = df[df["bright_ti4"] > 340]`,
+  "fed-register": `import requests
+
+r = requests.get(
+    "https://www.federalregister.gov/api/v1/documents.json",
+    params={
+        "conditions[term]": "critical minerals",
+        "conditions[agencies][]": ["commerce-department","energy-department"],
+        "conditions[type][]": ["RULE","PRESDOCU"],
+        "per_page": 20,
+        "order": "newest",
+    }
+)
+for doc in r.json()["results"]:
+    print(doc["publication_date"], doc["title"], doc["html_url"])`,
+  eia: `import requests
+
+r = requests.get(
+    "https://api.eia.gov/v2/electricity/operating-generator-capacity/data/",
+    params={
+        "api_key": "YOUR_KEY",
+        "frequency": "annual",
+        "data[]": ["nameplate-capacity-mw","net-summer-capacity-mw"],
+        "facets[technology][]": ["Batteries"],
+        "facets[stateid][]": ["US"],
+        "sort[0][column]": "period",
+        "sort[0][direction]": "desc",
+        "length": 500,
+    }
+)
+df_batteries = r.json()["response"]["data"]`,
+  gdelt: `import requests, pandas as pd
+
+# Monitor news about Chinese REE export restrictions
+r = requests.get(
+    "https://api.gdeltproject.org/api/v2/doc/doc",
+    params={
+        "query": '"rare earth" "export" (China OR MOFCOM)',
+        "mode": "artlist",
+        "maxrecords": 50,
+        "format": "json",
+        "startdatetime": "20260320000000",
+    }
+)
+articles = r.json().get("articles", [])
+for a in articles[:5]:
+    print(a["seendate"], a["title"], a["domain"])`,
+};
+
 export default function SourcesPage() {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [showHts, setShowHts] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
 
   const displayed = activeCategory === "All"
     ? SOURCES
@@ -559,9 +725,10 @@ export default function SourcesPage() {
               {catSources.map((src) => {
                 const st = STATUS_META[src.status];
                 return (
-                  <div
+                  <button
                     key={src.id}
-                    className={`bg-[var(--color-surface-container-low)] rounded-xl p-4 border ${
+                    onClick={() => setSelectedSource(src)}
+                    className={`w-full text-left bg-[var(--color-surface-container-low)] rounded-xl p-4 border transition-all hover:bg-[var(--color-surface-container)] hover:scale-[1.01] hover:shadow-lg group cursor-pointer ${
                       src.status === "gap"
                         ? "border-[var(--color-error)]/15"
                         : "border-transparent"
@@ -577,6 +744,7 @@ export default function SourcesPage() {
                         </div>
                         <p className="text-[10px] font-mono text-[var(--color-outline)] truncate">{src.endpoint}</p>
                       </div>
+                      <span className="material-symbols-outlined text-[14px] text-[var(--color-outline)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">open_in_full</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 my-3">
@@ -606,15 +774,148 @@ export default function SourcesPage() {
                       <p className="text-[9px] text-[var(--color-outline)] uppercase tracking-widest mb-1">Coverage</p>
                       <p className="text-[10px] text-[var(--color-muted-foreground)] leading-relaxed">{src.coverage}</p>
                     </div>
-
-                    <p className="text-[10px] text-[var(--color-outline)] mt-2 italic leading-relaxed">{src.notes}</p>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           </div>
         );
       })}
+
+      {/* Source detail modal */}
+      {selectedSource && (
+        <SourceModal source={selectedSource} onClose={() => setSelectedSource(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Source Detail Modal ─────────────────────────────────────────────────────
+function SourceModal({ source, onClose }: { source: DataSource; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const st = STATUS_META[source.status];
+  const snippet = CODE_SNIPPETS[source.id];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-3xl bg-[var(--color-surface-container)] rounded-2xl overflow-hidden shadow-2xl border border-[var(--color-outline-variant)]/20 flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-[var(--color-surface-container-high)]/60 border-b border-[var(--color-outline-variant)]/10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--color-secondary)]/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[var(--color-secondary)] text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {CATEGORY_ICONS[source.category] ?? "cable"}
+              </span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-foreground">{source.name}</h2>
+                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-sm border uppercase tracking-widest ${st.color}`}>
+                  {st.label}
+                </span>
+              </div>
+              <p className="text-[10px] font-mono text-[var(--color-outline)]">{source.endpoint}</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--color-outline)] hover:text-foreground hover:bg-[var(--color-surface-container-highest)] transition-colors">
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-5">
+
+          {/* Metadata grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Rate Limit",    value: source.rateLimit },
+              { label: "Auth Type",     value: source.authType },
+              { label: "Last Refresh",  value: source.lastRefresh },
+              { label: "Latency",       value: source.latency },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-[var(--color-surface-container-low)] rounded-lg p-3">
+                <p className="text-[9px] text-[var(--color-outline)] uppercase tracking-widest mb-0.5">{label}</p>
+                <p className="text-xs font-bold text-foreground">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Coverage */}
+          <div className="bg-[var(--color-surface-container-low)] rounded-lg p-4">
+            <p className="text-[9px] text-[var(--color-outline)] uppercase tracking-widest font-bold mb-1.5">Coverage</p>
+            <p className="text-sm text-[var(--color-muted-foreground)] leading-relaxed">{source.coverage}</p>
+          </div>
+
+          {/* Notes */}
+          <div className="bg-[var(--color-surface-container-low)] rounded-lg p-4 border-l-2 border-[var(--color-primary)]/40">
+            <p className="text-[9px] text-[var(--color-outline)] uppercase tracking-widest font-bold mb-1.5">Implementation Notes</p>
+            <p className="text-xs text-[var(--color-muted-foreground)] leading-relaxed">{source.notes}</p>
+          </div>
+
+          {/* Records ingested */}
+          {source.recordsIngested && (
+            <div className="flex items-center gap-2 px-1">
+              <span className={`w-2 h-2 rounded-full ${st.dot}`} />
+              <span className="text-xs text-[var(--color-muted-foreground)]">
+                <strong className="text-foreground">{source.recordsIngested}</strong> records currently ingested
+              </span>
+            </div>
+          )}
+
+          {/* Python code snippet */}
+          {snippet ? (
+            <div>
+              <p className="text-[9px] text-[var(--color-outline)] uppercase tracking-widest font-bold mb-2">Python Integration Sample</p>
+              <div className="bg-[#0d1117] rounded-xl overflow-hidden border border-[var(--color-outline-variant)]/10">
+                <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-surface-container-high)]/40 border-b border-[var(--color-outline-variant)]/10">
+                  <span className="text-[10px] font-mono text-[var(--color-secondary)]">Python · pip install requests</span>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(snippet)}
+                    className="text-[9px] text-[var(--color-outline)] hover:text-foreground flex items-center gap-1 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-xs">content_copy</span>
+                    Copy
+                  </button>
+                </div>
+                <pre className="p-4 text-[11px] font-mono text-[#e6edf3] overflow-x-auto leading-relaxed whitespace-pre">{snippet}</pre>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[var(--color-surface-container-low)] rounded-lg p-4 text-center">
+              <p className="text-xs text-[var(--color-outline)] italic">
+                {source.status === "gap"
+                  ? "No free API available — enterprise subscription required."
+                  : "Code snippet not yet available for this source."}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-[var(--color-outline-variant)]/10 flex items-center justify-between bg-[var(--color-surface-container-low)]/60 shrink-0">
+          <span className="text-[9px] text-[var(--color-outline)] font-mono uppercase tracking-widest">{source.category}</span>
+          <a
+            href={`https://${source.endpoint.split("/")[0]}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] font-bold text-[var(--color-primary)] hover:text-[var(--color-secondary)] transition-colors"
+          >
+            <span className="material-symbols-outlined text-xs">open_in_new</span>
+            Open API Docs
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
