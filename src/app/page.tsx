@@ -123,7 +123,7 @@ export default function DashboardPage() {
                   style={{ borderLeftColor: accentColor }}
                 >
                   <div className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in oklch, ${accentColor} 10%, transparent)` }}>
-                    <MsIcon name={iconName} className="text-[18px]" style={{ color: accentColor }} />
+                    <span className="material-symbols-outlined text-[18px]" style={{ color: accentColor }}>{iconName}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-[2px]">
