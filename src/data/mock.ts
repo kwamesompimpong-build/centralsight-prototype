@@ -261,7 +261,7 @@ export const alerts: Alert[] = [
     entityName: "Gotion High-Tech (Virginia)",
     title: "Beneficial ownership restructuring detected",
     description: "SEC filing indicates Hefei Municipal Government increased indirect stake through newly formed holding entity. May trigger PFE reclassification.",
-    source: "SEC EDGAR / OSINT Corporate Registry",
+    source: "SEC EDGAR (efts.sec.gov) / UK Companies House PSC",
   },
   {
     id: "a2",
@@ -272,7 +272,7 @@ export const alerts: Alert[] = [
     entityName: "Ganfeng Lithium Co.",
     title: "Facility expansion detected via satellite imagery",
     description: "New construction activity at Xinyu processing complex. Estimated 40% capacity expansion. Imagery shows 3 new evaporation ponds under construction.",
-    source: "Satellite Imagery Analysis (Maxar)",
+    source: "Sentinel-2 / Copernicus Data Space (STAC API) · FIRMS Thermal Anomaly",
   },
   {
     id: "a3",
@@ -283,7 +283,7 @@ export const alerts: Alert[] = [
     entityName: "CATL (Fujian)",
     title: "IRS Notice 2026-15 MACR thresholds published",
     description: "New Material Assistance Cost Ratios require 50% domestic content for battery components by 2027. CATL supply chain routes disqualified.",
-    source: "Federal Register / IRS",
+    source: "Federal Register API (federalregister.gov/api/v1) / IRS Notice 2026-15",
   },
   {
     id: "a4",
@@ -294,7 +294,7 @@ export const alerts: Alert[] = [
     entityName: "Baotou Steel Rare Earth",
     title: "Export volume spike to Vietnam transshipment hub",
     description: "Customs data shows 340% increase in rare earth oxide exports to Ho Chi Minh City. Pattern consistent with origin obfuscation ahead of Section 232 enforcement.",
-    source: "Trade Data Analytics / AIS Vessel Tracking",
+    source: "UN Comtrade API (comtradeapi.un.org) / Global Fishing Watch Vessel Presence",
   },
   {
     id: "a5",
@@ -305,7 +305,7 @@ export const alerts: Alert[] = [
     entityName: "Jinko Solar (Shangrao)",
     title: "UFLPA enforcement action — WRO issued",
     description: "CBP issued Withhold Release Order on polysilicon-containing modules from Shangrao facility. Connected to Xinjiang polysilicon supply chain.",
-    source: "CBP UFLPA Dashboard / Federal Register",
+    source: "OpenSanctions UFLPA Mirror (data.opensanctions.org) / CBP UFLPA Dashboard",
   },
   {
     id: "a6",
@@ -316,7 +316,7 @@ export const alerts: Alert[] = [
     entityName: "Albemarle (Kings Mountain)",
     title: "Facility operational — normal activity confirmed",
     description: "Routine satellite pass confirms active mining operations, vehicle movement, and processing facility thermal signatures consistent with expected output.",
-    source: "Satellite Imagery Analysis (Planet Labs)",
+    source: "Sentinel-2 STAC (earth-search.aws.element84.com/v1) / MSHA Weekly Data",
   },
   {
     id: "a7",
@@ -327,7 +327,7 @@ export const alerts: Alert[] = [
     entityName: "MP Materials (Mountain Pass)",
     title: "DOE Critical Materials Assessment — transformer minerals added",
     description: "2026 Energy CMA adds grain-oriented electrical steel (GOES) and large power transformer components to critical materials list.",
-    source: "DOE CMEI / Federal Register",
+    source: "DOE OSTI API (osti.gov/api/v1) / Federal Register API / EIA Form 860",
   },
   {
     id: "a8",
@@ -338,7 +338,7 @@ export const alerts: Alert[] = [
     entityName: "Baotou Steel Rare Earth",
     title: "State Council directive — consolidation order",
     description: "PRC State Council issued directive merging three northern rare earth processors under China Northern Rare Earth umbrella. Concentration increases PFE risk.",
-    source: "OSINT Media Monitoring / Xinhua",
+    source: "GDELT Project API / MOFCOM (scraped) / OpenCorporates",
   },
 ];
 

@@ -11,6 +11,7 @@ const navItems = [
   { href: "/supply-chain", label: "Supply Chain", icon: "account_tree" },
   { href: "/geoint", label: "GEOINT", icon: "satellite_alt" },
   { href: "/compliance", label: "Compliance", icon: "verified_user" },
+  { href: "/sources", label: "Intel Sources", icon: "cable" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
