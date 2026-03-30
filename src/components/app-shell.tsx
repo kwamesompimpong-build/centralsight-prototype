@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <h1 className="text-[13px] font-bold tracking-[-0.01em] text-foreground leading-none">
-                CentralSight
+                MineralScope
               </h1>
               <p className="text-[10px] text-[var(--color-secondary)] font-semibold tracking-[0.08em] uppercase mt-[3px] leading-none">
                 Energy Extension

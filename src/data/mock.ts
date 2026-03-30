@@ -1,4 +1,4 @@
-// CentralSight Energy Extension — Mock OSINT Data
+// MineralScope Energy Extension — Mock OSINT Data
 // Models the critical mineral supply chain intelligence layer
 
 export type RiskLevel = "critical" | "high" | "medium" | "low";

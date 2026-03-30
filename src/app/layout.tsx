@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CentralSight Energy Extension — Supply Intelligence Platform",
+  title: "MineralScope Energy Extension — Supply Intelligence Platform",
   description: "Critical mineral supply chain intelligence for US energy infrastructure",
 };
 
