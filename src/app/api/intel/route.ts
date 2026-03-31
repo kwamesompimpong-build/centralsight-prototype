@@ -6,12 +6,14 @@ import { fetchJSON, cachedFetch, buildURL } from "@/lib/api-client";
  * into a single normalized alert stream for the dashboard.
  *
  * Sources:
- *  1. Federal Register (regulatory signals)
- *  2. GDELT (news monitoring)
- *  3. SEC EDGAR (corporate filings)
+ * 1. Federal Register (regulatory signals)
+ * 2. GDELT (news monitoring) — uses native fetch for serverless compat
+ * 3. SEC EDGAR (corporate filings)
  *
  * GET /api/intel?limit=20
  */
+
+export const maxDuration = 30;
 
 interface IntelAlert {
   id: string;
@@ -26,24 +28,15 @@ interface IntelAlert {
   tags: string[];
 }
 
-// Keywords to search across all sources
-const CRITICAL_MINERALS_QUERIES = [
-  '"critical minerals"',
-  '"rare earth"',
-  '"lithium" "supply chain"',
-  '"cobalt" mining',
-  '"FEOC" minerals',
-  '"UFLPA" solar',
-];
-
-// Entity names we're tracking — used to tag alerts
 const TRACKED_ENTITIES = [
   "Ganfeng", "CATL", "Gotion", "Albemarle", "MP Materials",
   "Syrah Resources", "Jinko Solar", "Hyundai Steel", "Umicore", "Baotou",
 ];
 
 function matchEntities(text: string): string[] {
-  return TRACKED_ENTITIES.filter((name) => text.toLowerCase().includes(name.toLowerCase()));
+  return TRACKED_ENTITIES.filter((name) =>
+    text.toLowerCase().includes(name.toLowerCase()),
+  );
 }
 
 function classifySeverity(text: string): "critical" | "high" | "medium" | "low" {
@@ -61,6 +54,7 @@ async function fetchFederalRegisterAlerts(): Promise<IntelAlert[]> {
       per_page: "10",
       order: "newest",
     });
+
     const data = await fetchJSON<{
       results: Array<{
         title: string;
@@ -92,7 +86,7 @@ async function fetchFederalRegisterAlerts(): Promise<IntelAlert[]> {
 
 async function fetchGDELTAlerts(): Promise<IntelAlert[]> {
   try {
-    const url = buildURL("https://api.gdeltproject.org/api/v2/doc/doc", {
+    const params = new URLSearchParams({
       query: '"critical minerals" OR "rare earth supply" OR "lithium supply chain" OR "cobalt mining" OR "FEOC" OR "UFLPA"',
       mode: "artlist",
       format: "json",
@@ -100,15 +94,29 @@ async function fetchGDELTAlerts(): Promise<IntelAlert[]> {
       timespan: "3d",
       sort: "DateDesc",
     });
-    const data = await fetchJSON<{
-      articles?: Array<{
-        title: string;
-        url: string;
-        seendate: string;
-        domain: string;
-        sourcecountry: string;
-      }>;
-    }>(url, { timeout: 20000 });
+
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
+
+    // Use native fetch with AbortSignal.timeout for Vercel serverless compat
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "MineralScope/1.0 (critical-minerals-osint-prototype)",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) return [];
+
+    const text = await response.text();
+    if (!text || text.startsWith("<!") || text.startsWith("<html")) return [];
+
+    let data: { articles?: Array<{ title: string; url: string; seendate: string; domain: string; sourcecountry: string }> };
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return [];
+    }
 
     return (data.articles || []).map((article, i) => ({
       id: `gdelt-${i}-${article.seendate}`,
@@ -134,6 +142,7 @@ async function fetchEDGARAlerts(): Promise<IntelAlert[]> {
       forms: "10-K,10-Q,8-K",
       from: "0",
     });
+
     const data = await fetchJSON<{
       hits: {
         hits: Array<{
@@ -171,7 +180,6 @@ async function fetchEDGARAlerts(): Promise<IntelAlert[]> {
 }
 
 function parseGDELTDate(seendate: string): string {
-  // GDELT format: "20260327T143000Z"
   try {
     const year = seendate.substring(0, 4);
     const month = seendate.substring(4, 6);
@@ -192,7 +200,6 @@ export async function GET(request: Request) {
     const allAlerts = await cachedFetch<IntelAlert[]>(
       "intel-feed",
       async () => {
-        // Fetch all sources in parallel
         const [regulatory, news, filings] = await Promise.allSettled([
           fetchFederalRegisterAlerts(),
           fetchGDELTAlerts(),
@@ -205,11 +212,13 @@ export async function GET(request: Request) {
           ...(filings.status === "fulfilled" ? filings.value : []),
         ];
 
-        // Sort by timestamp (newest first)
-        alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        alerts.sort((a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+
         return alerts;
       },
-      3 * 60 * 1000, // Cache 3 minutes
+      3 * 60 * 1000,
     );
 
     const sourceCounts = {
