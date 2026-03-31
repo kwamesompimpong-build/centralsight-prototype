@@ -1,4 +1,4 @@
-—import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { fetchJSON, cachedFetch, buildURL } from "@/lib/api-client";
 
 /**
