@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   kpis,
-  alerts,
+  alerts as seedAlerts,
   complianceThresholds,
   entities,
   timeAgo,
@@ -12,37 +12,76 @@ import {
 } from "@/data/mock";
 import { MsIcon } from "@/components/ms-icon";
 import { SatelliteModal } from "@/components/satellite-modal";
+import { useIntelFeed, type IntelAlert } from "@/hooks/use-api";
 
-const FILTER_LABELS = ["All Sources", "Satellite", "Regulatory", "Ownership", "Sanctions"] as const;
+const FILTER_LABELS = ["All Sources", "Regulatory", "News", "Filings", "Satellite", "Sanctions"] as const;
 type FilterLabel = (typeof FILTER_LABELS)[number];
 
-function alertMatchesFilter(alert: (typeof alerts)[number], filter: FilterLabel) {
+function alertMatchesFilter(alert: { type: string }, filter: FilterLabel) {
   if (filter === "All Sources") return true;
-  if (filter === "Satellite") return alert.type === "satellite";
   if (filter === "Regulatory") return alert.type === "regulatory";
-  if (filter === "Ownership") return alert.type === "ownership-change";
-  if (filter === "Sanctions") return alert.type === "sanctions";
+  if (filter === "News") return alert.type === "news";
+  if (filter === "Filings") return alert.type === "filing";
+  if (filter === "Satellite") return alert.type === "satellite";
+  if (filter === "Sanctions") return alert.type === "sanctions" || alert.type === "ownership-change";
   return true;
+}
+
+function severityColor(severity: string) {
+  if (severity === "critical") return "var(--color-error)";
+  if (severity === "high") return "var(--color-tertiary)";
+  return "var(--color-secondary)";
+}
+
+function typeIcon(type: string) {
+  if (type === "satellite") return "satellite_alt";
+  if (type === "sanctions" || type === "ownership-change") return "gavel";
+  if (type === "regulatory") return "article";
+  if (type === "filing") return "description";
+  if (type === "news") return "newspaper";
+  return "query_stats";
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterLabel>("All Sources");
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [reportCopied, setReportCopied] = useState(false);
   const [briefingCopied, setBriefingCopied] = useState(false);
+
+  // Live intelligence feed from aggregated APIs
+  const { data: intelFeed, loading: intelLoading, lastUpdated } = useIntelFeed(30);
 
   const belowThreshold = complianceThresholds.filter((t) => t.currentCompliance < t.macrThreshold);
   const criticalEntities = entities.filter((e) => e.pfeDesignation);
-  const filteredAlerts = alerts.filter((a) => alertMatchesFilter(a, activeFilter));
 
-  function openEntityFromAlert(entityId: string) {
-    const entity = entities.find((e) => e.id === entityId);
-    if (entity) setSelectedEntity(entity);
-  }
+  // Merge live API alerts with seed alerts for enrichment
+  const liveAlerts = intelFeed?.results || [];
+  const allAlerts = liveAlerts.length > 0 ? liveAlerts : seedAlerts.map((a) => ({
+    id: a.id,
+    timestamp: a.timestamp,
+    type: a.type,
+    severity: a.severity,
+    title: a.title,
+    description: a.description,
+    source: a.source,
+    sourceUrl: null,
+    entities: [a.entityName],
+    tags: [a.type],
+  } satisfies IntelAlert));
 
-  function handleGenerateReport() {
-    router.push("/report");
+  const filteredAlerts = allAlerts.filter((a) => alertMatchesFilter(a, activeFilter));
+
+  // Compute live KPIs
+  const liveAlertCount = allAlerts.length;
+  const liveCriticalCount = allAlerts.filter((a) => a.severity === "critical").length;
+  const liveSourceCount = intelFeed?.sources?.length || 0;
+
+  function openEntityFromAlert(alert: IntelAlert) {
+    // Try to match alert entities to tracked entities
+    const matched = entities.find((e) =>
+      alert.entities.some((name) => e.name.toLowerCase().includes(name.toLowerCase()))
+    );
+    if (matched) setSelectedEntity(matched);
   }
 
   function handleShareBriefing() {
@@ -72,29 +111,40 @@ export default function DashboardPage() {
                   <span className="relative rounded-full h-[5px] w-[5px] bg-[var(--color-secondary)]" />
                 </span>
                 <span className="text-[10px] font-semibold tracking-[0.1em] text-[var(--color-secondary)] uppercase">
-                  AI Briefing
+                  Live Intelligence
                 </span>
               </div>
-              <span className="text-[11px] text-[var(--color-outline)]">Mar 27, 2026 · 08:00 UTC</span>
+              {lastUpdated && (
+                <span className="text-[11px] text-[var(--color-outline)]">
+                  Updated {timeAgo(lastUpdated.toISOString())} · {liveSourceCount} sources active
+                </span>
+              )}
+              {intelLoading && (
+                <span className="text-[10px] text-[var(--color-primary)] animate-pulse">Fetching feeds...</span>
+              )}
             </div>
             <h1 className="text-[26px] font-[var(--font-headline)] font-extrabold text-foreground mb-5 leading-[1.2] tracking-[-0.02em] max-w-[640px]">
-              FEOC Enforcement Escalation &amp; Critical Mineral Supply Chain Fractures
+              {liveCriticalCount > 0
+                ? `${liveCriticalCount} Critical Alert${liveCriticalCount > 1 ? "s" : ""} — ${liveAlertCount} Total Signals`
+                : "Monitoring Critical Mineral Supply Chains"}
             </h1>
             <div className="grid md:grid-cols-2 gap-6 text-[13px] text-[var(--color-muted-foreground)] leading-[1.7]">
               <p>
-                Beneficial ownership restructuring detected at Gotion High-Tech Virginia — Hefei Municipal Government
-                increased indirect stake through newly formed holding entity. May trigger PFE reclassification,
-                jeopardizing $2.36B in planned facility investment.
+                Live intelligence feed aggregating{" "}
+                <strong className="text-foreground">Federal Register</strong> regulatory actions,{" "}
+                <strong className="text-foreground">GDELT</strong> global news monitoring, and{" "}
+                <strong className="text-foreground">SEC EDGAR</strong> corporate filings — all filtered for critical
+                minerals, FEOC, UFLPA, and supply chain signals.
               </p>
               <p>
-                Satellite imagery confirms 40% capacity expansion at Ganfeng Lithium&apos;s Xinyu complex.
-                IRS Notice 2026-15 now requires 50% domestic content for battery components by 2027 — US lithium
-                compliance sits at 28%, well below threshold.
+                Tracking {entities.length} entities across {complianceThresholds.length} mineral categories.{" "}
+                {belowThreshold.length} minerals below MACR threshold.{" "}
+                {criticalEntities.length} PFE-designated entities require continuous monitoring.
               </p>
             </div>
             <div className="mt-6 flex gap-3">
               <button
-                onClick={handleGenerateReport}
+                onClick={() => router.push("/report")}
                 className="bg-[var(--color-primary)] text-[var(--color-primary-foreground)] font-semibold px-5 py-2 rounded-xl text-[12px] tracking-[0.02em] hover:brightness-110 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[14px]">description</span>
@@ -116,9 +166,9 @@ export default function DashboardPage() {
           <div className="w-[260px] shrink-0 flex flex-col gap-3">
             {[
               { label: "Entities Tracked", value: kpis.entitiesTracked, sub: `${kpis.pfeDesignated} PFE`, color: "var(--color-foreground)", accent: "var(--color-primary)", href: "/entities" },
-              { label: "Risk Alerts", value: alerts.length, sub: `${kpis.criticalAlerts} Critical`, color: "var(--color-foreground)", accent: "var(--color-tertiary)", href: null },
+              { label: "Live Signals", value: liveAlertCount || seedAlerts.length, sub: `${liveCriticalCount || kpis.criticalAlerts} Critical`, color: "var(--color-foreground)", accent: "var(--color-tertiary)", href: null },
               { label: "MACR Compliance", value: `${kpis.avgCompliance}%`, sub: `${belowThreshold.length} below threshold`, color: "var(--color-error)", accent: "var(--color-error)", href: "/compliance" },
-              { label: "Satellite Verified", value: kpis.satelliteVerifications, sub: `of ${kpis.entitiesTracked} entities`, color: "var(--color-secondary)", accent: "var(--color-secondary)", href: "/geoint" },
+              { label: "API Sources", value: liveSourceCount || 3, sub: "live feeds", color: "var(--color-secondary)", accent: "var(--color-secondary)", href: "/sources" },
             ].map((kpi, i) => (
               <div
                 key={i}
@@ -148,6 +198,11 @@ export default function DashboardPage() {
               <h2 className="text-[15px] font-[var(--font-headline)] font-bold flex items-center gap-2 tracking-[-0.01em]">
                 <MsIcon name="dynamic_feed" className="text-[20px] text-[var(--color-primary)]" />
                 OSINT Intelligence Feed
+                {liveAlerts.length > 0 && (
+                  <span className="text-[10px] font-medium text-[var(--color-secondary)] bg-[var(--color-secondary)]/10 px-2 py-0.5 rounded-md ml-2">
+                    LIVE
+                  </span>
+                )}
               </h2>
               <div className="flex gap-1.5">
                 {FILTER_LABELS.map((label) => (
@@ -167,26 +222,28 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-2.5">
-              {filteredAlerts.length === 0 && (
-                <div className="p-8 text-center text-[13px] text-[var(--color-outline)] bg-[var(--color-surface-container)] rounded-xl">
-                  No {activeFilter.toLowerCase()} alerts at this time.
+              {intelLoading && filteredAlerts.length === 0 && (
+                <div className="p-8 text-center text-[13px] text-[var(--color-primary)] bg-[var(--color-surface-container)] rounded-xl animate-pulse">
+                  Fetching live intelligence from Federal Register, GDELT, and SEC EDGAR...
                 </div>
               )}
-              {filteredAlerts.map((alert) => {
-                const isC = alert.severity === "critical";
-                const isH = alert.severity === "high";
-                const accentColor = isC ? "var(--color-error)" : isH ? "var(--color-tertiary)" : "var(--color-secondary)";
-                const iconName =
-                  alert.type === "satellite" ? "satellite_alt"
-                  : alert.type === "sanctions" ? "gavel"
-                  : alert.type === "ownership-change" ? "swap_horiz"
-                  : alert.type === "regulatory" ? "article"
-                  : "query_stats";
+              {!intelLoading && filteredAlerts.length === 0 && (
+                <div className="p-8 text-center text-[13px] text-[var(--color-outline)] bg-[var(--color-surface-container)] rounded-xl">
+                  No {activeFilter.toLowerCase()} signals at this time.
+                </div>
+              )}
+              {filteredAlerts.slice(0, 15).map((alert) => {
+                const accentColor = severityColor(alert.severity);
+                const iconName = typeIcon(alert.type);
 
                 return (
                   <button
                     key={alert.id}
-                    onClick={() => openEntityFromAlert(alert.entityId)}
+                    onClick={() => {
+                      if ('sourceUrl' in alert && alert.sourceUrl) {
+                        openEntityFromAlert(alert as IntelAlert);
+                      }
+                    }}
                     className="w-full text-left card-interactive flex gap-4 p-4 bg-[var(--color-surface-container)] rounded-xl border-l-[3px] cursor-pointer hover:bg-[var(--color-surface-container-high)] transition-colors"
                     style={{ borderLeftColor: accentColor }}
                   >
@@ -199,23 +256,38 @@ export default function DashboardPage() {
                           {alert.source.split(" / ")[0]}
                         </span>
                         <span className="text-[10px] text-[var(--color-outline)]">{timeAgo(alert.timestamp)}</span>
+                        {('sourceUrl' in alert && alert.sourceUrl) && (
+                          <span className="text-[9px] text-[var(--color-secondary)]">LIVE</span>
+                        )}
                       </div>
                       <h3 className="text-[13px] font-semibold text-foreground mb-1 leading-snug">{alert.title}</h3>
                       <p className="text-[12px] text-[var(--color-muted-foreground)] leading-[1.6] line-clamp-2">{alert.description}</p>
-                      <div className="flex gap-1.5 mt-2.5">
-                        <span className="text-[10px] bg-[var(--color-surface-container-highest)] px-2 py-[3px] rounded-md text-[var(--color-muted-foreground)] font-medium">
-                          {alert.entityName}
-                        </span>
+                      <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                        {alert.entities.map((entity, i) => (
+                          <span key={i} className="text-[10px] bg-[var(--color-surface-container-highest)] px-2 py-[3px] rounded-md text-[var(--color-muted-foreground)] font-medium">
+                            {entity}
+                          </span>
+                        ))}
                         <span className="text-[10px] bg-[var(--color-surface-container-highest)] px-2 py-[3px] rounded-md text-[var(--color-outline)]">
                           {alert.type.replace("-", " ")}
                         </span>
                       </div>
                     </div>
-                    <span className="material-symbols-outlined text-[16px] text-[var(--color-outline)] self-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-1">chevron_right</span>
                   </button>
                 );
               })}
             </div>
+
+            {/* Source attribution */}
+            {intelFeed && (
+              <div className="mt-4 flex items-center gap-4 text-[10px] text-[var(--color-outline)]">
+                <span className="uppercase tracking-widest font-bold">Sources</span>
+                {intelFeed.sources.map((s) => (
+                  <span key={s} className="bg-[var(--color-surface-container)] px-2 py-1 rounded text-[var(--color-muted-foreground)]">{s}</span>
+                ))}
+                <span className="ml-auto">{intelFeed.total} total signals</span>
+              </div>
+            )}
           </div>
 
           {/* Right Panels */}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { MsIcon } from "@/components/ms-icon";
+import { useApi } from "@/hooks/use-api";
 
 type SourceStatus = "active" | "limited" | "pending" | "gap";
 
@@ -604,6 +605,111 @@ for a in articles[:5]:
     print(a["seendate"], a["title"], a["domain"])`,
 };
 
+// Live API health check endpoints
+const API_HEALTH_CHECKS = [
+  { id: "intel", name: "Intel Aggregator", route: "/api/intel?limit=1", sources: "Federal Register + GDELT + SEC EDGAR" },
+  { id: "sanctions", name: "Sanctions Screen", route: "/api/sanctions?q=test", sources: "Consolidated Screening List" },
+  { id: "regulatory", name: "Regulatory Feed", route: "/api/regulatory?q=minerals&per_page=1", sources: "Federal Register API" },
+  { id: "filings", name: "SEC Filings", route: "/api/filings?q=minerals", sources: "SEC EDGAR" },
+  { id: "news", name: "News Monitor", route: "/api/news?q=minerals&maxrecords=1&timespan=1d", sources: "GDELT Project" },
+  { id: "trade", name: "Trade Data", route: "/api/trade?mineral=lithium", sources: "UN Comtrade" },
+  { id: "firms", name: "Thermal Anomalies", route: "/api/firms?lat=35&lng=-81&radius=10&days=1", sources: "NASA FIRMS" },
+  { id: "energy", name: "Energy Data", route: "/api/energy?route=electricity/operating-generator-capacity&limit=1", sources: "EIA API" },
+  { id: "spending", name: "Gov Procurement", route: "/api/spending?keyword=minerals&limit=1", sources: "USASpending.gov" },
+];
+
+function LiveStatusPanel() {
+  const [statuses, setStatuses] = useState<Record<string, { ok: boolean; ms: number; note?: string }>>({});
+  const [checking, setChecking] = useState(false);
+
+  async function runHealthChecks() {
+    setChecking(true);
+    const results: Record<string, { ok: boolean; ms: number; note?: string }> = {};
+    await Promise.allSettled(
+      API_HEALTH_CHECKS.map(async (check) => {
+        const start = Date.now();
+        try {
+          const r = await fetch(check.route);
+          const ms = Date.now() - start;
+          const data = await r.json();
+          const configured = data.configured !== false;
+          results[check.id] = {
+            ok: r.ok && configured,
+            ms,
+            note: !configured ? "API key not configured" : data.error || undefined,
+          };
+        } catch {
+          results[check.id] = { ok: false, ms: Date.now() - start, note: "Request failed" };
+        }
+      }),
+    );
+    setStatuses(results);
+    setChecking(false);
+  }
+
+  const checked = Object.keys(statuses).length > 0;
+  const okCount = Object.values(statuses).filter((s) => s.ok).length;
+
+  return (
+    <div className="bg-[var(--color-surface-container)] rounded-xl p-5 border border-[var(--color-outline-variant)]/10">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-secondary)]">
+            Live API Status
+          </h3>
+          {checked && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+              okCount === API_HEALTH_CHECKS.length
+                ? "bg-[var(--color-secondary)]/10 text-[var(--color-secondary)]"
+                : "bg-[var(--color-tertiary)]/10 text-[var(--color-tertiary)]"
+            }`}>
+              {okCount}/{API_HEALTH_CHECKS.length} responding
+            </span>
+          )}
+        </div>
+        <button
+          onClick={runHealthChecks}
+          disabled={checking}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors disabled:opacity-50"
+        >
+          <span className={`material-symbols-outlined text-sm ${checking ? "animate-spin" : ""}`}>
+            {checking ? "progress_activity" : "play_arrow"}
+          </span>
+          {checking ? "Checking..." : checked ? "Re-check" : "Run Health Check"}
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {API_HEALTH_CHECKS.map((check) => {
+          const status = statuses[check.id];
+          return (
+            <div key={check.id} className="flex items-center gap-2.5 p-2.5 bg-[var(--color-surface-container-low)] rounded-lg">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                !status ? "bg-[var(--color-outline)]/30"
+                : status.ok ? "bg-[var(--color-secondary)]"
+                : "bg-[var(--color-error)]"
+              }`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold text-foreground">{check.name}</div>
+                <div className="text-[9px] text-[var(--color-outline)] truncate">{check.sources}</div>
+              </div>
+              {status && (
+                <div className="text-right shrink-0">
+                  <div className={`text-[10px] font-mono font-bold ${status.ok ? "text-[var(--color-secondary)]" : "text-[var(--color-error)]"}`}>
+                    {status.ok ? `${status.ms}ms` : "ERR"}
+                  </div>
+                  {status.note && (
+                    <div className="text-[8px] text-[var(--color-outline)] truncate max-w-[80px]">{status.note}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function SourcesPage() {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [showHts, setShowHts] = useState(false);
@@ -628,7 +734,7 @@ export default function SourcesPage() {
             Intelligence Sources
           </h1>
           <p className="text-[var(--color-muted-foreground)] text-sm mt-1">
-            Data collector registry — APIs, feeds, and open data sources powering MINERAL_SENTINEL.
+            Live API integrations — 9 free data sources connected. Run health checks to verify status.
           </p>
         </div>
         <button
@@ -643,6 +749,9 @@ export default function SourcesPage() {
           HTS Code Reference
         </button>
       </div>
+
+      {/* Live API Status */}
+      <LiveStatusPanel />
 
       {/* HTS reference panel */}
       {showHts && (

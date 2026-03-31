@@ -95,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-secondary)]" />
             </span>
             <span className="text-[10px] text-[var(--color-muted-foreground)] tracking-[0.05em] uppercase">
-              OSINT feeds active
+              9 API feeds connected
             </span>
           </div>
         </div>

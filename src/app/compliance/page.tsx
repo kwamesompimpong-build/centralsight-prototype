@@ -1,5 +1,135 @@
+"use client";
+
 import { complianceThresholds, entities } from "@/data/mock";
 import { MsIcon } from "@/components/ms-icon";
+import { useRegulatoryFeed, useSpending, type RegulatoryResponse, type SpendingResponse } from "@/hooks/use-api";
+
+function RegulatoryPanel() {
+  const { data, loading, error } = useRegulatoryFeed('"critical minerals" OR "FEOC" OR "UFLPA" OR "rare earth"');
+
+  return (
+    <div className="bg-[var(--color-surface-container)] p-6 rounded-xl border border-[var(--color-outline-variant)]/10">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-secondary)]">
+          Federal Register — Live Regulatory Feed
+        </h3>
+        <span className="text-[9px] text-[var(--color-outline)] bg-[var(--color-surface-container-highest)] px-2 py-0.5 rounded">
+          federalregister.gov/api
+        </span>
+      </div>
+
+      {loading && (
+        <div className="text-[12px] text-[var(--color-primary)] animate-pulse py-4 text-center">
+          Fetching regulatory documents...
+        </div>
+      )}
+
+      {error && <div className="text-[12px] text-[var(--color-error)] py-2">Feed unavailable: {error}</div>}
+
+      {data && !loading && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-[var(--color-muted-foreground)] mb-3">
+            {data.total} documents matching critical minerals/FEOC/UFLPA
+          </p>
+          <div className="max-h-[500px] overflow-y-auto space-y-2">
+            {data.results.slice(0, 12).map((doc) => {
+              const typeColor = doc.type === "Rule"
+                ? "text-[var(--color-error)] bg-[var(--color-error)]/10"
+                : doc.type === "Proposed Rule"
+                ? "text-[var(--color-tertiary)] bg-[var(--color-tertiary)]/10"
+                : "text-[var(--color-primary)] bg-[var(--color-primary)]/10";
+              return (
+                <div key={doc.documentNumber} className="p-3 bg-[var(--color-surface-container-low)] rounded-lg hover:bg-[var(--color-surface-container-high)] transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${typeColor}`}>
+                      {doc.type}
+                    </span>
+                    <span className="text-[9px] text-[var(--color-outline)]">{doc.publicationDate}</span>
+                    {doc.significant && (
+                      <span className="text-[8px] text-[var(--color-error)] font-bold">SIGNIFICANT</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] font-bold text-foreground leading-snug line-clamp-2">{doc.title}</p>
+                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                    {doc.agencies.slice(0, 2).map((a, i) => (
+                      <span key={i} className="text-[9px] bg-[var(--color-surface-container-highest)] px-1.5 py-0.5 rounded text-[var(--color-muted-foreground)]">
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                  {doc.abstract && (
+                    <p className="text-[10px] text-[var(--color-outline)] mt-1.5 line-clamp-2">{doc.abstract}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpendingPanel() {
+  const { data, loading, error } = useSpending("critical minerals");
+
+  return (
+    <div className="bg-[var(--color-surface-container)] p-6 rounded-xl border border-[var(--color-outline-variant)]/10">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-secondary)]">
+          Government Procurement — Critical Minerals
+        </h3>
+        <span className="text-[9px] text-[var(--color-outline)] bg-[var(--color-surface-container-highest)] px-2 py-0.5 rounded">
+          USASpending.gov
+        </span>
+      </div>
+
+      {loading && (
+        <div className="text-[12px] text-[var(--color-primary)] animate-pulse py-4 text-center">
+          Querying federal awards...
+        </div>
+      )}
+
+      {error && <div className="text-[12px] text-[var(--color-error)] py-2">Spending data unavailable: {error}</div>}
+
+      {data && !loading && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-[var(--color-muted-foreground)] mb-3">
+            {data.total} awards matching &quot;critical minerals&quot;
+          </p>
+          <div className="max-h-[500px] overflow-y-auto space-y-2">
+            {data.results.slice(0, 10).map((award, i) => (
+              <div key={i} className="p-3 bg-[var(--color-surface-container-low)] rounded-lg">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-foreground truncate flex-1">{award.recipient}</span>
+                  <span className="text-[11px] font-bold text-[var(--color-secondary)] tabular-nums ml-2">
+                    ${award.amount >= 1_000_000
+                      ? `${(award.amount / 1_000_000).toFixed(1)}M`
+                      : `${(award.amount / 1_000).toFixed(0)}K`}
+                  </span>
+                </div>
+                {award.description && (
+                  <p className="text-[10px] text-[var(--color-muted-foreground)] line-clamp-2">{award.description}</p>
+                )}
+                <div className="flex items-center gap-2 mt-1.5">
+                  {award.agency && (
+                    <span className="text-[9px] bg-[var(--color-surface-container-highest)] px-1.5 py-0.5 rounded">{award.agency}</span>
+                  )}
+                  {award.type && (
+                    <span className="text-[9px] text-[var(--color-outline)]">{award.type}</span>
+                  )}
+                  {award.actionDate && (
+                    <span className="text-[9px] text-[var(--color-outline)]">{award.actionDate}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CompliancePage() {
   const belowThreshold = complianceThresholds.filter((t) => t.currentCompliance < t.macrThreshold);
@@ -16,7 +146,7 @@ export default function CompliancePage() {
             Compliance & Regulatory Intelligence
           </h1>
           <p className="text-[var(--color-muted-foreground)] text-sm mt-1">
-            FEOC/PFE compliance scoring, MACR threshold tracking, and regulatory framework monitoring.
+            Live regulatory feed from Federal Register. Government procurement from USASpending. FEOC/PFE compliance scoring.
           </p>
         </div>
         <button className="bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-container)] text-[var(--color-primary-foreground)] font-bold px-4 py-2 rounded-md text-xs flex items-center gap-2">
@@ -57,6 +187,12 @@ export default function CompliancePage() {
         </div>
       </div>
 
+      {/* Live API Panels */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <RegulatoryPanel />
+        <SpendingPanel />
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-6">
         {/* MACR Compliance Gauges */}
         <div className="bg-[var(--color-surface-container)] p-6 rounded-xl border border-[var(--color-outline-variant)]/10">
@@ -82,7 +218,6 @@ export default function CompliancePage() {
                       className={`h-full rounded-full ${isBelow ? "bg-[var(--color-error)]" : "bg-[var(--color-secondary)]"}`}
                       style={{ width: `${Math.min(t.currentCompliance, 100)}%` }}
                     />
-                    {/* Threshold marker */}
                     <div
                       className="absolute top-0 h-full w-0.5 bg-foreground/30"
                       style={{ left: `${t.macrThreshold}%` }}
